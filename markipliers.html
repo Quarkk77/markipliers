@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Gravity Simulation</title>
+</head>
+<body>
+    <style>
+        body {background-color: black; text-align: center;}
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+        }
+        .file-upload {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: Arial, sans-serif;
+        }
+        .file-upload input {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+        button {
+            padding: 10px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #ff9800;
+            color: white;
+            font-family: Arial, sans-serif;
+    </style>
+    <div id="controls">
+        <label class="file-upload">
+            Upload
+            <input type="file" id="imageUpload" accept="image/*">
+        </label>
+        <button id="addBody">SPAWN NEW IMAGE</button>
+    </div>
+    <script>
+        class Body {
+            constructor(position, velocity, size, imageSrc, mass) {
+                this.position = position;
+                this.velocity = velocity;
+                this.size = size;
+                this.image = new Image();
+                this.image.src = imageSrc;
+                this.mass = mass;
+            }
+
+            accelerate(vector) {
+                this.velocity[0] += vector[0] / this.mass;
+                this.velocity[1] += vector[1] / this.mass;
+            }
+
+            updatePosition() {
+                this.position[0] += this.velocity[0];
+                this.position[1] += this.velocity[1];
+            }
+
+            draw(context) {
+                context.drawImage(this.image, this.position[0] - this.size / 2, this.position[1] - this.size / 2, this.size, this.size);
+            }
+        }
+
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        document.body.appendChild(canvas);
+
+        function adjustCanvasSize() {
+            if (window.innerWidth < 901) {
+                canvas.width = window.innerWidth * 0.8;
+                canvas.height = window.innerHeight * 0.6;
+            } else {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+        }
+
+        adjustCanvasSize();
+
+        const bodies = [];
+
+        let userImageSrc = "local-image.png";
+
+        document.getElementById("imageUpload").addEventListener("change", function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    userImageSrc = e.target.result;
+                    bodies.forEach(body => body.image.src = userImageSrc);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function randomRange(min, max) {
+            return Math.random() * (max - min) + min;
+        };
+
+        function addNewBody() {
+            bodies.push(new Body(
+                [randomRange(50, canvas.width - 50), randomRange(50, canvas.height - 50)],
+                [randomRange(-3, 3), randomRange(-3, 3)],
+                window.innerWidth < 901 ? 40 : 20, 
+                userImageSrc,
+                1e8
+            ))}
+
+        document.getElementById("addBody").addEventListener("click", addNewBody);
+
+        // Add a first body with mass 1e13
+        bodies.push(new Body(
+            [canvas.width / 2, canvas.height / 2],
+            [randomRange(-3, 3), randomRange(-3, 3)],
+            window.innerWidth < 901 ? 120 : 100,
+            userImageSrc,
+            1e14
+        ));
+
+        for (let i = 0; i < 5; i++) {
+            addNewBody();
+        }
+
+        function calculateGravitationalForce(body1, body2) {
+            const G = 6.67430e-11;
+            let rVec = [body2.position[0] - body1.position[0], body2.position[1] - body1.position[1]];
+            let rMag = Math.sqrt(rVec[0] ** 2 + rVec[1] ** 2);
+            if (rMag === 0) return [0, 0];
+            let forceMag = (G * body1.mass * body2.mass) / (rMag ** 2);
+            return [forceMag * (rVec[0] / rMag), forceMag * (rVec[1] / rMag)];
+        }
+
+        function update() {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            bodies.forEach((body, i) => {
+                let totalForce = [0, 0];
+                bodies.forEach((otherBody, j) => {
+                    if (i !== j) {
+                        let force = calculateGravitationalForce(body, otherBody);
+                        totalForce[0] += force[0];
+                        totalForce[1] += force[1];
+                    }
+                });
+                body.accelerate(totalForce);
+                body.updatePosition();
+
+                if (body.position[1] + body.size / 2 > canvas.height) {
+                    body.position[1] = canvas.height - body.size / 2;
+                    body.velocity[1] *= -0.85;
+                    hitSound.play();
+                }
+                if (body.position[0] + body.size / 2 > canvas.width) {
+                    body.position[0] = canvas.width - body.size / 2;
+                    body.velocity[0] *= -0.85;
+                    hitSound.play();
+                }
+                if (body.position[0] - body.size / 2 < 0) {
+                    body.position[0] = body.size / 2;
+                    body.velocity[0] *= -0.85;
+                    hitSound.play();
+                }
+                if (body.position[1] - body.size / 2 < 0) {
+                    body.position[1] = body.size / 2;
+                    body.velocity[1] *= -0.85;
+                    hitSound.play();
+                }
+                
+                body.draw(context);
+            });
+            requestAnimationFrame(update);
+        }
+
+        canvas.addEventListener("click", (event) => {
+            let mousePos = [event.clientX, event.clientY];
+            bodies.forEach(body => {
+                let forceVector = [(mousePos[0] - body.position[0]) * 1e10, (mousePos[1] - body.position[1]) * 1e10];
+                body.accelerate(forceVector);
+            });
+            launchSound.play();
+        });
+
+        window.addEventListener("resize", () => {
+            adjustCanvasSize();
+        });
+
+        // Background music with autoplay check
+        const audio = new Audio("bgm.mp3");
+        audio.loop = true;
+        audio.volume = 0.5;
+        
+        audio.play();
+
+        // Sound effects
+        const hitSound = new Audio("hit.mp3");
+        hitSound.volume = 0.7;
+
+        const launchSound = new Audio("launch.mp3");
+        launchSound.volume = 0.5;
+
+        update();
+    </script>
+</body>
+</html>
